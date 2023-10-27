@@ -1,0 +1,28 @@
+{
+  "name": "discord-guard-bot",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "bun-types": "latest",
+    "husky": "^8.0.0",
+    "prettier": "^3.0.3",
+    "typed-emitter": "^2.1.0"
+  },
+  "bin": {
+    "guardbot": "./dist/index.js"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "cac": "^6.7.14",
+    "discord.js": "^14.13.0",
+    "parse-duration": "^1.1.0",
+    "redis": "^4.6.10",
+    "yaml": "^2.3.3"
+  },
+  "scripts": {
+    "prepare": "husky install",
+    "build": "bun build index.ts --outdir ./dist --target bun --minify"
+  }
+}
