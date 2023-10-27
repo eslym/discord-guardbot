@@ -17,6 +17,7 @@ import {
     GuildMember,
     EmbedBuilder,
     IntentsBitField,
+    ChatInputCommandInteraction,
 } from 'discord.js';
 import { setupRedis } from './lib/redis';
 import { kLimiter, setupLimiter } from './lib/limiter';
@@ -58,7 +59,7 @@ async function syncCommand(config: ConfigFunction, guild: Guild) {
         return;
     }
     const command = new SlashCommandBuilder();
-    command.setName('message');
+    command.setName('welcome');
     command.setDescription('Send the verify message to current channel');
     command.setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
     await guild.commands.set([command]);
@@ -71,12 +72,15 @@ async function init(context: Context) {
     client.guilds.cache.forEach(guild => wrapAsync(syncCommand)(config, guild));
 }
 
-async function sendWelcomeMessage(config: ConfigFunction, channel: GuildTextBasedChannel) {
+async function sendWelcomeMessage(
+    config: ConfigFunction,
+    interaction: ChatInputCommandInteraction,
+) {
     const message = config(
-        `guild.${channel.guild.id as any as number}.lang.message.verify`,
+        `guild.${interaction.guildId as any as number}.lang.message.verify`,
         config('lang.message.verify', 'Please click the button below to verify'),
     );
-    await channel.send({
+    await interaction.reply({
         content: message,
         components: [
             new ActionRowBuilder().addComponents(
@@ -84,7 +88,7 @@ async function sendWelcomeMessage(config: ConfigFunction, channel: GuildTextBase
                     .setCustomId('guard:request')
                     .setLabel(
                         config(
-                            `guild.${channel.guild.id as any as number}.lang.button.verify`,
+                            `guild.${interaction.guildId as any as number}.lang.button.verify`,
                             config('lang.button.verify', 'Verify'),
                         ),
                     )
@@ -227,10 +231,8 @@ cli.command('[...configs]', 'Start the bot')
                 'interactionCreate',
                 wrapAsync(async (interaction: Interaction) => {
                     if (!interaction.guild) return;
-                    if (interaction.isChatInputCommand() && interaction.commandName === 'message') {
-                        const guild = client.guilds.cache.get(interaction.guildId!);
-                        const channel = await guild!.channels.fetch(interaction.channelId!)!;
-                        await sendWelcomeMessage(config, channel as GuildTextBasedChannel);
+                    if (interaction.isChatInputCommand() && interaction.commandName === 'welcome') {
+                        await sendWelcomeMessage(config, interaction);
                         return;
                     }
                     if (!interaction.isButton()) return;
