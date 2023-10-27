@@ -10,7 +10,10 @@ export function createPin(): string {
 }
 
 async function generateCaptcha(pin: string, captchaBin: string) {
-    const { stdout } = Bun.spawn([captchaBin, pin]);
+    const { stdout, exited } = Bun.spawn([captchaBin, pin]);
+    if ((await exited) !== 0) {
+        throw new Error('captcha generator exited with non-zero code');
+    }
     const data = await Bun.readableStreamToArrayBuffer(stdout);
     return Buffer.from(data);
 }
