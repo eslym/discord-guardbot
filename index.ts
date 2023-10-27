@@ -11,7 +11,6 @@ import {
     Guild,
     PermissionFlagsBits,
     SlashCommandBuilder,
-    type GuildTextBasedChannel,
     ButtonStyle,
     type Interaction,
     GuildMember,
