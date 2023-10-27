@@ -57,6 +57,7 @@ export interface Config {
     redis?: {
         host: string;
         port: string;
+        username?: string;
         password?: string;
         db?: string;
         prefix?: string;
@@ -68,15 +69,13 @@ export interface Config {
             throttle?: Partial<Throttle>;
         };
     };
-    lang: Lang;
+    lang?: Partial<Lang, true>;
 }
-
-type Defined<T> = T extends undefined ? never : T;
 
 type Dot<T extends object, P extends string = ''> = {
     [K in keyof T]: K extends string | number
         ? (T[K] extends object ? Dot<T[K], `${P}${K}.`> : {}) & {
-              [key in `${P}${K}`]: Defined<T[K]>;
+              [key in `${P}${K}`]: T[K];
           }
         : never;
 }[keyof T];
@@ -110,6 +109,7 @@ const staticKeys = new Set<string>([
     'captcha.throttle.ban',
     'redis.host',
     'redis.port',
+    'redis.username',
     'redis.password',
     'redis.db',
     'redis.prefix',
@@ -146,8 +146,8 @@ function validateKey(key: string): key is keyof DotConfig {
 }
 
 export type ConfigFunction = {
-    <K extends keyof DotConfig>(key: K): DotConfig[K] | undefined;
-    <K extends keyof DotConfig>(key: K, def: DotConfig[K]): DotConfig[K];
+    <K extends keyof DotConfig>(key: K): DotConfig[K];
+    <K extends keyof DotConfig>(key: K, def: DotConfig[K] | undefined): DotConfig[K];
 };
 
 function* travelKeys(obj: object, prefix: string = ''): IterableIterator<[string, string]> {
@@ -165,7 +165,7 @@ export async function loadConfig(args: string[], configFile?: string): Promise<C
     let config: Config = {} as any;
     if (configFile) {
         if (!(await Bun.file(configFile).exists())) {
-            throw new ConfigError(`[config] config file not found: ${configFile}`);
+            throw new ConfigError(`config file not found: ${configFile}`);
         }
         const ext = extname(configFile).toLowerCase();
         switch (ext) {
@@ -177,7 +177,7 @@ export async function loadConfig(args: string[], configFile?: string): Promise<C
                 config = parse(await Bun.file(configFile).text());
                 break;
             default:
-                throw new ConfigError(`[config] unsupported config file type: ${ext}`);
+                throw new ConfigError(`unsupported config file type: ${ext}`);
         }
     }
     for (const [key, _] of travelKeys(config)) {
@@ -212,7 +212,7 @@ export async function loadConfig(args: string[], configFile?: string): Promise<C
         const value = get(config, key);
         if (value === undefined) {
             if (arguments.length == 1) {
-                throw new ConfigError(`[config] missing required key: ${key}`);
+                throw new ConfigError(`missing required key: ${key}`);
             }
             flat.set(key, def);
             return def;

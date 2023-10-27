@@ -1,5 +1,6 @@
 {
-  "name": "discord-guard-bot",
+  "name": "guardbot",
+  "version": "1.0.0",
   "module": "index.ts",
   "type": "module",
   "devDependencies": {
@@ -22,7 +23,7 @@
     "yaml": "^2.3.3"
   },
   "scripts": {
-    "prepare": "husky install",
-    "build": "bun build index.ts --outdir ./dist --target bun --minify"
+    "build": "bun build index.ts --outdir ./dist --target bun --minify-syntax --minify-whitespace",
+    "compile": "bun build index.ts --compile --outfile ./dist/guardbot --minify-syntax --minify-whitespace"
   }
 }
