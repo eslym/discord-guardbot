@@ -118,19 +118,18 @@ const staticKeys = new Set<string>([
     'lang.message.success',
     'lang.message.failed',
     'lang.message.throttle',
-    'lang.message.button.verify',
+    'lang.button.verify',
 ]);
 
 const guildPrefix = /^guild\.\d+\./;
 const guildKeys = new Set<string>([
-    'channel',
     'role',
     'lang.message.verify',
     'lang.message.captcha',
     'lang.message.success',
     'lang.message.failed',
     'lang.message.throttle',
-    'lang.message.button.verify',
+    'lang.button.verify',
     'throttle.expires',
     'throttle.ban',
     'throttle.attempts',
