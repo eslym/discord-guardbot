@@ -21,6 +21,7 @@ import {
 import { setupRedis } from './lib/redis';
 import { kLimiter, setupLimiter } from './lib/limiter';
 import { kCaptchaManager, setupCaptchaManager } from './lib/captcha';
+import { stringify } from 'yaml';
 
 function wrapAsync<T extends (...args: any[]) => Promise<void>>(
     fn: T,
@@ -53,7 +54,7 @@ const keyPad = [
 ].map(row => new ActionRowBuilder<ButtonBuilder>().addComponents(row).toJSON());
 
 async function syncCommand(config: ConfigFunction, guild: Guild) {
-    if (!config(`guild.${guild.id as any as number}.role`, undefined)) {
+    if (!config(`guild.${guild.id as any as number}.role`, true)) {
         console.info(`[discord] guild ${guild.id} is not configured, skipping`);
         return;
     }
@@ -77,7 +78,7 @@ async function sendWelcomeMessage(
 ) {
     const message = config(
         `guild.${interaction.guildId as any as number}.lang.message.verify`,
-        config('lang.message.verify', 'Please click the button below to verify'),
+        'lang.message.verify',
     );
     await interaction.reply({
         content: message,
@@ -88,7 +89,7 @@ async function sendWelcomeMessage(
                     .setLabel(
                         config(
                             `guild.${interaction.guildId as any as number}.lang.button.verify`,
-                            config('lang.button.verify', 'Verify'),
+                            'lang.button.verify',
                         ),
                     )
                     .setStyle(ButtonStyle.Primary),
@@ -103,14 +104,21 @@ async function requestCaptcha(context: Context, interaction: ButtonInteraction) 
     const member = interaction.member!;
     const limiter = context.get(kLimiter);
 
-    if (!(await limiter.attempt(guild.id, member.user.id))) {
+    const max = config(
+        `guild.${guild.id as any as number}.throttle.attempts`,
+        'captcha.throttle.attempts',
+    );
+    const exp = config(
+        `guild.${guild.id as any as number}.throttle.expires`,
+        'captcha.throttle.expires',
+    );
+    const ban = config(`guild.${guild.id as any as number}.throttle.ban`, 'captcha.throttle.ban');
+
+    if (!(await limiter.attempt(guild.id, member.user.id, max, exp, ban))) {
         await interaction.reply({
             content: config(
                 `guild.${guild.id as any as number}.lang.message.throttle`,
-                config(
-                    'lang.message.throttle',
-                    'You failed to verify too many times, please try again later',
-                ),
+                'lang.message.throttle',
             ),
             ephemeral: true,
         });
@@ -120,7 +128,7 @@ async function requestCaptcha(context: Context, interaction: ButtonInteraction) 
     const captcha = await context.get(kCaptchaManager).get(guild.id, member.user.id);
     const message = config(
         `guild.${guild.id as any as number}.lang.message.captcha`,
-        config('lang.message.captcha', 'Please enter the captcha'),
+        'lang.message.captcha',
     );
     await interaction.reply({
         embeds: [new EmbedBuilder().setTitle(message)],
@@ -158,7 +166,7 @@ async function handleKeypad(context: Context, interaction: ButtonInteraction) {
                 await interaction.update({
                     content: config(
                         `guild.${guild.id as any as number}.lang.message.success`,
-                        config('lang.message.success', 'You have been verified'),
+                        'lang.message.success',
                     ),
                     embeds: [],
                     components: [],
@@ -172,7 +180,7 @@ async function handleKeypad(context: Context, interaction: ButtonInteraction) {
                 await interaction.update({
                     content: config(
                         `guild.${guild.id as any as number}.lang.message.failed`,
-                        config('lang.message.failed', 'You failed to verify'),
+                        'lang.message.failed',
                     ),
                     embeds: [],
                     components: [],
@@ -197,12 +205,14 @@ async function handleKeypad(context: Context, interaction: ButtonInteraction) {
 
 const cli = cac('guardbot');
 
-cli.command('[...configs]', 'Start the bot')
-    .option('-c, --config <file>', 'Specify the config file')
-    .action(async (configs, options: { config?: string }) => {
+cli.command('', 'Start the bot')
+    .option('-c, --config <file>', 'Specify the config file or set a specific config value')
+    .action(async (options: { config?: string }) => {
+        const context = new Context();
         try {
-            const context = new Context();
-            const config = await loadConfig(configs, options.config);
+            const config = await loadConfig(
+                typeof options.config === 'string' ? { file: options.config } : options.config,
+            );
 
             context.set(kConfig, config);
             await setupRedis(context);
@@ -246,6 +256,19 @@ cli.command('[...configs]', 'Start the bot')
 
             client.on('error', handleError);
             await client.login(config('discord.token'));
+        } catch (e) {
+            handleError(e);
+        }
+    });
+
+cli.command('print-config', 'Print the config for debugging')
+    .option('-c, --config <file>', 'Specify the config file or set a specific config value')
+    .action(async (options: { config?: string }) => {
+        try {
+            const config = await loadConfig(
+                typeof options.config === 'string' ? { file: options.config } : options.config,
+            );
+            console.log(stringify(config.data));
         } catch (e) {
             handleError(e);
         }

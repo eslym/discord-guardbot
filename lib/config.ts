@@ -1,14 +1,14 @@
 import { extname } from 'path';
 import { parse } from 'yaml';
+import { promises as fs } from 'fs';
 import { createContextKey } from './context';
+import { ZodError, z } from 'zod';
+import parseDuration from 'parse-duration';
+import set from 'lodash.set';
+import get from 'lodash.get';
+import merge from 'lodash.merge';
 
-const ENV_PREFIX = 'GUARDBOT_';
-
-type Partial<T, DEEP extends boolean = false> = T extends object
-    ? {
-          [K in keyof T]?: DEEP extends true ? Partial<T[K], true> : T[K];
-      }
-    : T;
+const envPrefix = 'GUARDBOT_';
 
 type Required<T, DEEP extends boolean = true> = T extends object
     ? {
@@ -17,60 +17,112 @@ type Required<T, DEEP extends boolean = true> = T extends object
     : T;
 
 export class ConfigError extends Error {
+    validationError?: ZodError;
+
     constructor(message: string) {
         super(message);
         this.name = 'ConfigError';
     }
 }
 
-interface Lang {
-    message: {
-        verify: string;
-        captcha: string;
-        success: string;
-        failed: string;
-        throttle: string;
-    };
-    button: {
-        verify: string;
-    };
-}
+const DurationSchema = z.string().transform((val, ctx) => {
+    if (val === undefined) return undefined;
+    const ms = parseDuration(val);
+    if (ms === undefined || ms === null || ms <= 0) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Invalid duration format',
+        });
+        return undefined;
+    }
+    return ms;
+});
 
-interface Throttle {
-    attempts: string;
-    expires: string;
-    ban: string;
-}
+const ConfigSchema = z.object({
+    discord: z
+        .object({
+            token: z.string(),
+        })
+        .default({} as any),
+    captcha: z
+        .object({
+            bin: z.string().default('captcha'),
+            expires: DurationSchema.default('5m'),
+            driver: z.enum(['memory', 'redis']).default('memory'),
+            throttle: z
+                .object({
+                    driver: z.enum(['memory', 'redis']).default('memory'),
+                    attempts: z.coerce.number().min(1).default(5),
+                    expires: DurationSchema.default('30m'),
+                    ban: DurationSchema.default('4h'),
+                })
+                .default({}),
+        })
+        .default({}),
+    redis: z
+        .object({
+            host: z.string().default('localhost'),
+            port: z.coerce.number().min(1).max(65535).default(6379),
+            username: z.string().optional(),
+            password: z.string().optional(),
+            db: z.coerce.number().optional(),
+            prefix: z.string().default(''),
+        })
+        .optional(),
+    lang: z
+        .object({
+            message: z
+                .object({
+                    verify: z.string().default('Please verify that you are human.'),
+                    captcha: z.string().default('Please solve the captcha.'),
+                    success: z.string().default('You have been verified.'),
+                    failed: z.string().default('You failed to verify.'),
+                    throttle: z.string().default('You have been banned for too many attempts.'),
+                })
+                .default({}),
+            button: z
+                .object({
+                    verify: z.string().default('Verify'),
+                })
+                .default({}),
+        })
+        .default({}),
+    guild: z
+        .record(
+            z.string().regex(/^\d+$/, 'Invalid guild ID') as any as z.ZodNumber,
+            z.object({
+                role: z.string().regex(/^\d+$/, 'Invalid role ID'),
+                lang: z
+                    .object({
+                        message: z
+                            .object({
+                                verify: z.string().optional(),
+                                captcha: z.string().optional(),
+                                success: z.string().optional(),
+                                failed: z.string().optional(),
+                                throttle: z.string().optional(),
+                            })
+                            .optional(),
+                        button: z
+                            .object({
+                                verify: z.string().optional(),
+                            })
+                            .optional(),
+                    })
+                    .optional(),
+                throttle: z
+                    .object({
+                        attempts: z.coerce.number().min(1).optional(),
+                        expires: DurationSchema.optional(),
+                        ban: DurationSchema.optional(),
+                    })
+                    .optional(),
+            }),
+        )
+        .optional(),
+});
 
-export interface Config {
-    discord: {
-        token: string;
-    };
-    captcha?: {
-        bin?: string;
-        expires?: string;
-        driver?: 'memory' | 'redis';
-        throttle?: Partial<Throttle> & {
-            driver?: 'memory' | 'redis';
-        };
-    };
-    redis?: {
-        host: string;
-        port: string;
-        username?: string;
-        password?: string;
-        db?: string;
-        prefix?: string;
-    };
-    guild: {
-        [key: number]: {
-            role: string;
-            lang?: Partial<Lang, true>;
-            throttle?: Partial<Throttle>;
-        };
-    };
-    lang?: Partial<Lang, true>;
-}
+export type Config = z.infer<typeof ConfigSchema>;
 
 type Dot<T extends object, P extends string = ''> = {
     [K in keyof T]: K extends string | number
@@ -84,141 +136,100 @@ type U2I<U> = (U extends any ? (k: U) => void : never) extends (k: infer I) => v
 
 type DotConfig = U2I<Dot<Required<Config, true>>>;
 
-function get(obj: Config, key: string): any {
-    const keys = key.split('.');
-    const last = keys.pop()!;
-    const o = keys.reduce((o, k) => o[k] ?? {}, obj as any);
-    return o[last];
-}
-
-function set(obj: Config, key: string, value: any): void {
-    const keys = key.split('.');
-    const last = keys.pop()!;
-    const o = keys.reduce((o, k) => o[k] ?? (o[k] = {}), obj as any);
-    o[last] = value;
-}
-
-const staticKeys = new Set<string>([
-    'discord.token',
-    'captcha.bin',
-    'captcha.expires',
-    'captcha.driver',
-    'captcha.throttle.driver',
-    'captcha.throttle.attempts',
-    'captcha.throttle.expires',
-    'captcha.throttle.ban',
-    'redis.host',
-    'redis.port',
-    'redis.username',
-    'redis.password',
-    'redis.db',
-    'redis.prefix',
-    'lang.message.verify',
-    'lang.message.captcha',
-    'lang.message.success',
-    'lang.message.failed',
-    'lang.message.throttle',
-    'lang.button.verify',
-]);
-
-const guildPrefix = /^guild\.\d+\./;
-const guildKeys = new Set<string>([
-    'role',
-    'lang.message.verify',
-    'lang.message.captcha',
-    'lang.message.success',
-    'lang.message.failed',
-    'lang.message.throttle',
-    'lang.button.verify',
-    'throttle.expires',
-    'throttle.ban',
-    'throttle.attempts',
-]);
-
-function validateKey(key: string): key is keyof DotConfig {
-    if (staticKeys.has(key)) return true;
-    if (guildPrefix.test(key)) {
-        key = key.replace(guildPrefix, '');
-        return guildKeys.has(key);
-    }
-    return false;
-}
-
 export type ConfigFunction = {
     <K extends keyof DotConfig>(key: K): DotConfig[K];
-    <K extends keyof DotConfig>(key: K, def: DotConfig[K] | undefined): DotConfig[K];
+    <K extends keyof DotConfig>(key: K, optional: boolean): DotConfig[K] | undefined;
+    <K extends keyof DotConfig, F extends keyof DotConfig>(key: K, fallback: F): DotConfig[K];
+
+    readonly data: Config;
 };
 
-function* travelKeys(obj: object, prefix: string = ''): IterableIterator<[string, string]> {
-    for (const [key, value] of Object.entries(obj)) {
-        const k = prefix + key;
-        if (typeof value === 'object') {
-            yield* travelKeys(value, k + '.');
-        } else {
-            yield [k, value];
+function deepFreeze(object: object | Function) {
+    const propNames = Reflect.ownKeys(object);
+
+    for (const name of propNames) {
+        const value = (object as any)[name];
+
+        if ((value && typeof value === 'object') || typeof value === 'function') {
+            deepFreeze(value);
         }
     }
+
+    return Object.freeze(object);
 }
 
-export async function loadConfig(args: string[], configFile?: string): Promise<ConfigFunction> {
-    let config: Config = {} as any;
-    if (configFile) {
-        if (!(await Bun.file(configFile).exists())) {
-            throw new ConfigError(`config file not found: ${configFile}`);
+export async function loadConfig(config: any): Promise<ConfigFunction> {
+    const cliConfig = z
+        .object({
+            file: z.string(),
+        })
+        .safeParse(config);
+
+    let cfg: any = {};
+
+    if (cliConfig.success) {
+        if (!(await fs.exists(cliConfig.data.file))) {
+            throw new ConfigError(`config file not found: ${cliConfig.data.file}`);
         }
-        const ext = extname(configFile).toLowerCase();
+        const ext = extname(cliConfig.data.file).toLowerCase();
         switch (ext) {
             case '.json':
-                config = await Bun.file(configFile).json();
+                cfg = JSON.parse(await fs.readFile(cliConfig.data.file, 'utf-8'));
                 break;
             case '.yaml':
             case '.yml':
-                config = parse(await Bun.file(configFile).text());
+                cfg = parse(await fs.readFile(cliConfig.data.file, 'utf-8'));
                 break;
             default:
-                throw new ConfigError(`unsupported config file type: ${ext}`);
+                throw new ConfigError(`unsupported config file format: ${ext}`);
         }
     }
-    for (const [key, _] of travelKeys(config)) {
-        if (!validateKey(key)) {
-            throw new ConfigError(`[config] invalid key from file: ${key}`);
-        }
-        if (typeof get(config, key) !== 'string') {
-            throw new ConfigError(`[config] value of ${key} is must be a string`);
-        }
+
+    for (const [key, value] of Object.entries(process.env)) {
+        if (!key.startsWith(envPrefix)) continue;
+        const path = key.slice(envPrefix.length).toLowerCase().replace(/_/g, '.');
+        set(cfg, path, value);
     }
-    for (const [env, val] of Object.entries(process.env)) {
-        if (!env.startsWith(ENV_PREFIX)) continue;
-        const key = env.slice(ENV_PREFIX.length).replace(/_/g, '.').toLowerCase();
-        if (!validateKey(key)) {
-            console.warn(`[config] invalid key from env: ${key}`);
-            continue;
-        }
-        set(config, key, val);
+
+    cfg = merge(cfg, config);
+
+    const configSchema = ConfigSchema.safeParse(cfg);
+
+    if (!configSchema.success) {
+        const err = new ConfigError('There are errors in the config');
+        err.validationError = configSchema.error;
+        throw err;
     }
-    for (const arg of args) {
-        const [key, value] = arg.split('=', 2);
-        if (!key || !value) continue;
-        if (!validateKey(key)) {
-            console.warn(`[config] invalid key from arguments: ${key}`);
-            continue;
-        }
-        set(config, key, value);
-    }
+
+    cfg = configSchema.data;
+
+    deepFreeze(cfg);
+
     let flat = new Map();
-    return function (key: string, def?: any) {
+    function getConfig(key: string, fallback: string | true) {
         if (flat.has(key)) return flat.get(key);
-        const value = get(config, key);
+        const value = get(cfg, key);
         if (value === undefined) {
             if (arguments.length == 1) {
-                throw new ConfigError(`missing required key: ${key}`);
+                throw new ConfigError(`missing required config: ${key}`);
             }
+            if (fallback === true) {
+                return undefined;
+            }
+            const def = flat.has(fallback) ? flat.get(fallback) : get(cfg, fallback);
+            flat.set(fallback, def);
             flat.set(key, def);
             return def;
         }
         flat.set(key, value);
         return value;
-    };
+    }
+    Object.defineProperty(getConfig, 'data', {
+        get() {
+            return cfg;
+        },
+    });
+    return getConfig as ConfigFunction;
 }
 
 export const kConfig = createContextKey<ConfigFunction>('config');

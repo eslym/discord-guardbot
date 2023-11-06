@@ -4,6 +4,9 @@
   "module": "index.ts",
   "type": "module",
   "devDependencies": {
+    "@types/lodash.get": "^4.4.8",
+    "@types/lodash.merge": "^4.6.8",
+    "@types/lodash.set": "^4.3.8",
     "bun-types": "latest",
     "husky": "^8.0.0",
     "prettier": "^3.0.3",
@@ -18,9 +21,13 @@
   "dependencies": {
     "cac": "^6.7.14",
     "discord.js": "^14.13.0",
+    "lodash.get": "^4.4.2",
+    "lodash.merge": "^4.6.2",
+    "lodash.set": "^4.3.2",
     "parse-duration": "^1.1.0",
     "redis": "^4.6.10",
-    "yaml": "^2.3.3"
+    "yaml": "^2.3.3",
+    "zod": "^3.22.4"
   },
   "scripts": {
     "build": "bun build index.ts --outdir ./dist --target bun --minify-syntax --minify-whitespace",
