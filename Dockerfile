@@ -9,7 +9,7 @@ FROM oven/bun:1.0.9 AS bun-builder
 ADD ./ /home/bun/app/
 
 RUN cd /home/bun/app \
-    && bun install --frozen-lockfile \
+    && bun install \
     && bun run build \
     && chmod +x /home/bun/app/dist/index.js
 
