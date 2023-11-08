@@ -177,7 +177,6 @@ dist
 .git
 .vscode
 Dockerfile
-bun.lockb
 
 config.json
 config.yaml
