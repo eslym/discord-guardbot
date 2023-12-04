@@ -30,7 +30,7 @@
     "zod": "^3.22.4"
   },
   "scripts": {
-    "build": "bun build index.ts --outdir ./dist --target bun --minify-syntax --minify-whitespace",
-    "compile": "bun build index.ts --compile --outfile ./dist/guardbot --minify-syntax --minify-whitespace"
+    "build": "bun build index.ts --outdir ./dist --target bun --minify-syntax --minify-whitespace --external ws",
+    "compile": "bun build index.ts --compile --outfile ./dist/guardbot --minify-syntax --minify-whitespace --external ws"
   }
 }

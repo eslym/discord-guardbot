@@ -254,7 +254,10 @@ cli.command('', 'Start the bot')
                 }),
             );
 
-            client.on('error', handleError);
+            client.on('error', err => {
+                handleError(err);
+                process.exit(1);
+            });
             await client.login(config('discord.token'));
         } catch (e) {
             handleError(e);
