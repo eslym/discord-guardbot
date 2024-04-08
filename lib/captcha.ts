@@ -103,7 +103,7 @@ export class RedisCaptchaManager implements CaptchaManager {
     }
 
     async verify(guild: Snowflake, member: Snowflake, pin: string): Promise<boolean> {
-        const key = `${this.#redisPrefix}${guild}:${member}`;
+        const key = `${this.#redisPrefix}captcha:${guild}:${member}`;
         const value = await this.#redis.get(key);
         if (!value) return false;
         if (value !== pin) return false;
