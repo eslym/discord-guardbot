@@ -9,7 +9,7 @@ RUN git clone https://github.com/eslym/captcha-cli.git \
 FROM mcr.microsoft.com/devcontainers/javascript-node:20-bullseye
 
 ARG BUN_INSTALL=/usr/local
-ARG BUN_VERSION=bun-v1.0.15
+ARG BUN_VERSION=bun-v1.1.2
 
 RUN apt update && apt upgrade -y \
     && apt install -y lldb siege wrk \
