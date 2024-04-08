@@ -1,6 +1,7 @@
 import { createClient, type RedisClientType } from 'redis';
 import { Context, createContextKey } from './context';
 import { kConfig } from './config';
+import { handleError } from './error';
 
 export interface RedisContext {
     client: RedisClientType<any, any, any>;
@@ -20,6 +21,7 @@ export async function setupRedis(context: Context) {
     const prefix = context.get(kConfig)('redis.prefix');
     await redis.connect();
     context.set(kRedis, { client: redis, prefix });
+    redis.on('error', handleError);
 }
 
 export const kRedis = createContextKey<RedisContext>('redis');

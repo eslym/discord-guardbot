@@ -1,6 +1,8 @@
 import { ConfigError } from './config';
 import { ContextError } from './context';
 
+const env = Bun.env;
+
 export function handleError(error: unknown) {
     if (error instanceof ContextError) {
         console.error(error.message);
@@ -16,12 +18,13 @@ export function handleError(error: unknown) {
         process.exit(1);
     }
     if (error instanceof Error) {
-        if (process.env.NODE_ENV === 'production') {
+        if (env.NODE_ENV === 'production') {
             console.error(error.message);
         } else {
             console.error(error.stack);
         }
-        return;
+        process.exit(1);
     }
     console.error(error);
+    process.exit(1);
 }

@@ -2,7 +2,6 @@ import { AttachmentBuilder, type Snowflake } from 'discord.js';
 import type { RedisClientType } from 'redis';
 import { createContextKey, type Context } from './context';
 import { ConfigError, kConfig } from './config';
-import parseDuration from 'parse-duration';
 import { kRedis } from './redis';
 
 export function createPin(): string {
@@ -115,8 +114,8 @@ export class RedisCaptchaManager implements CaptchaManager {
 
 export function setupCaptchaManager(context: Context) {
     const captchaBin = context.get(kConfig)('captcha.bin', 'captcha');
-    const expires = parseDuration(context.get(kConfig)('captcha.expires', '5m'));
-    const driver = context.get(kConfig)('captcha.driver', 'memory');
+    const expires = context.get(kConfig)('captcha.expires');
+    const driver = context.get(kConfig)('captcha.driver');
 
     if (!expires || expires < 0) {
         throw new ConfigError('captcha.expires must be a string of duration');

@@ -17,11 +17,17 @@ import {
     EmbedBuilder,
     IntentsBitField,
     ChatInputCommandInteraction,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ModalSubmitInteraction,
 } from 'discord.js';
 import { setupRedis } from './lib/redis';
 import { kLimiter, setupLimiter } from './lib/limiter';
 import { kCaptchaManager, setupCaptchaManager } from './lib/captcha';
 import { stringify } from 'yaml';
+
+const env = Bun.env;
 
 function wrapAsync<T extends (...args: any[]) => Promise<void>>(
     fn: T,
@@ -31,31 +37,9 @@ function wrapAsync<T extends (...args: any[]) => Promise<void>>(
     };
 }
 
-function keyButton(key: string) {
-    return new ButtonBuilder()
-        .setCustomId(`guard:keypad:${key}`)
-        .setLabel(key)
-        .setStyle(ButtonStyle.Primary);
-}
-
-function emojiButton(id: string, emoji: string, style: ButtonStyle) {
-    return new ButtonBuilder().setCustomId(`guard:keypad:${id}`).setEmoji(emoji).setStyle(style);
-}
-
-const keyPad = [
-    ['1', '2', '3'].map(keyButton),
-    ['4', '5', '6'].map(keyButton),
-    ['7', '8', '9'].map(keyButton),
-    [
-        emojiButton('backspace', '✖️', ButtonStyle.Danger),
-        keyButton('0'),
-        emojiButton('submit', '✔️', ButtonStyle.Success),
-    ],
-].map(row => new ActionRowBuilder<ButtonBuilder>().addComponents(row).toJSON());
-
 async function syncCommand(config: ConfigFunction, guild: Guild) {
     if (!config(`guild.${guild.id as any as number}.role`, true)) {
-        console.info(`[discord] guild ${guild.id} is not configured, skipping`);
+        console.info(`[discord] guild ${guild.name ?? guild.id} is not configured, skipping`);
         return;
     }
     const command = new SlashCommandBuilder();
@@ -63,7 +47,7 @@ async function syncCommand(config: ConfigFunction, guild: Guild) {
     command.setDescription('Send the verify message to current channel');
     command.setDefaultMemberPermissions(PermissionFlagsBits.Administrator);
     await guild.commands.set([command]);
-    console.info(`[discord] guild ${guild.id} synced`);
+    console.info(`[discord] guild ${guild.name ?? guild.id} synced`);
 }
 
 async function init(context: Context) {
@@ -124,7 +108,9 @@ async function requestCaptcha(context: Context, interaction: ButtonInteraction) 
         });
         return;
     }
-    console.log(`[captcha] guild ${guild.id} member ${member.user.id} requested new captcha`);
+    console.log(
+        `[captcha] guild ${guild.name ?? guild.id} member ${member.user.username ?? member.user.id} requested new captcha`,
+    );
     const captcha = await context.get(kCaptchaManager).get(guild.id, member.user.id);
     const message = config(
         `guild.${guild.id as any as number}.lang.message.captcha`,
@@ -133,73 +119,103 @@ async function requestCaptcha(context: Context, interaction: ButtonInteraction) 
     await interaction.reply({
         embeds: [new EmbedBuilder().setTitle(message)],
         files: [captcha],
-        components: keyPad,
+        components: [
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('guard:answer')
+                    .setLabel(
+                        config(
+                            `guild.${guild.id as any as number}.lang.button.answer`,
+                            'lang.button.answer',
+                        ),
+                    )
+                    .setStyle(ButtonStyle.Primary),
+            ),
+        ],
         ephemeral: true,
     });
 }
 
-async function handleKeypad(context: Context, interaction: ButtonInteraction) {
+async function handleAnswer(context: Context, interaction: ButtonInteraction) {
+    const config = context.get(kConfig);
+    const modal = new ModalBuilder()
+        .setCustomId(`guard:captcha`)
+        .setTitle(
+            config(
+                `guild.${interaction.guildId as any as number}.lang.modal.title`,
+                'lang.modal.title',
+            ),
+        )
+        .addComponents(
+            new ActionRowBuilder<TextInputBuilder>().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('answer')
+                    .setLabel(
+                        config(
+                            `guild.${interaction.guildId as any as number}.lang.modal.label`,
+                            'lang.modal.label',
+                        ),
+                    )
+                    .setPlaceholder(
+                        config(
+                            `guild.${interaction.guildId as any as number}.lang.modal.placeholder`,
+                            'lang.modal.placeholder',
+                        ),
+                    )
+                    .setMinLength(6)
+                    .setMaxLength(6)
+                    .setStyle(TextInputStyle.Short),
+            ),
+        );
+    await interaction.showModal(modal);
+}
+
+async function handleSubmit(context: Context, interaction: ModalSubmitInteraction) {
+    if (!interaction.isFromMessage()) return;
+
     const config = context.get(kConfig);
     const guild = interaction.guild!;
     const member = interaction.member!;
     const captcha = context.get(kCaptchaManager);
-    const button = interaction.customId.slice('guard:keypad:'.length);
-    const embed = interaction.message!.embeds[0]!.toJSON();
-    const pin = embed.description ?? '';
-    switch (button) {
-        case 'backspace': {
-            (embed.description = pin.slice(0, -1)),
-                await interaction.update({
-                    embeds: [embed],
-                });
-            break;
-        }
-        case 'submit': {
-            if (pin.length < 6) {
-                await interaction.deferUpdate();
-                return;
-            }
-            const success = await captcha.verify(guild.id, member.user.id, pin);
-            if (success) {
-                await context.get(kLimiter).reset(guild.id, member.user.id);
-                console.log(`[captcha] guild ${guild.id} member ${member.user.id} verified`);
-                await interaction.update({
-                    content: config(
-                        `guild.${guild.id as any as number}.lang.message.success`,
-                        'lang.message.success',
-                    ),
-                    embeds: [],
-                    components: [],
-                    attachments: [],
-                });
-                await (member as GuildMember).roles.add(
-                    config(`guild.${guild.id as any as number}.role`),
+    const pin = interaction.fields.getTextInputValue('answer');
+
+    const success = await captcha.verify(guild.id, member.user.id, pin);
+    if (success) {
+        await context.get(kLimiter).reset(guild.id, member.user.id);
+        console.log(
+            `[captcha] guild ${guild.name ?? guild.id} member ${member.user.username ?? member.user.id} verified`,
+        );
+        await interaction.update({
+            content: config(
+                `guild.${guild.id as any as number}.lang.message.success`,
+                'lang.message.success',
+            ),
+            embeds: [],
+            components: [],
+            attachments: [],
+        });
+        await (member as GuildMember).roles
+            .add(config(`guild.${guild.id as any as number}.role`))
+            .catch(err => {
+                console.warn(
+                    `[discord] failed to add role to member ${member.user.username ?? member.user.id}`,
                 );
-            } else {
-                console.log(`[captcha] guild ${guild.id} member ${member.user.id} failed`);
-                await interaction.update({
-                    content: config(
-                        `guild.${guild.id as any as number}.lang.message.failed`,
-                        'lang.message.failed',
-                    ),
-                    embeds: [],
-                    components: [],
-                    attachments: [],
-                });
-            }
-            break;
-        }
-        default: {
-            if (pin.length >= 6) {
-                await interaction.deferUpdate();
-                return;
-            }
-            embed.description = pin + button;
-            await interaction.update({
-                embeds: [embed],
+                if (err instanceof Error)
+                    console.warn(env.NODE_ENV === 'production' ? err.message : err.stack);
             });
-            break;
-        }
+    } else {
+        console.log(
+            `[captcha] guild ${guild.name ?? guild.id} member ${member.user.username ?? member.user.id} failed`,
+        );
+        await interaction.update({
+            content: config(
+                `guild.${guild.id as any as number}.lang.message.failed`,
+                'lang.message.failed',
+            ),
+            embeds: [],
+            components: [],
+            attachments: [],
+        });
     }
 }
 
@@ -244,13 +260,21 @@ cli.command('', 'Start the bot')
                         await sendWelcomeMessage(config, interaction);
                         return;
                     }
-                    if (!interaction.isButton()) return;
+                    if (!interaction.isButton()) {
+                        if (
+                            interaction.isModalSubmit() &&
+                            interaction.customId === 'guard:captcha'
+                        ) {
+                            await handleSubmit(context, interaction);
+                        }
+                        return;
+                    }
                     if (interaction.customId === 'guard:request') {
                         await requestCaptcha(context, interaction);
                         return;
                     }
-                    if (!interaction.customId.startsWith('guard:keypad:')) return;
-                    await handleKeypad(context, interaction);
+                    if (!interaction.customId.startsWith('guard:answer')) return;
+                    await handleAnswer(context, interaction);
                 }),
             );
 

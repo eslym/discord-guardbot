@@ -83,6 +83,14 @@ const ConfigSchema = z.object({
             button: z
                 .object({
                     verify: z.string().default('Verify'),
+                    answer: z.string().default('Answer'),
+                })
+                .default({}),
+            modal: z
+                .object({
+                    title: z.string().default('Captcha Answer'),
+                    label: z.string().default('Answer'),
+                    placeholder: z.string().default('Type the answer here'),
                 })
                 .default({}),
         })
@@ -106,6 +114,14 @@ const ConfigSchema = z.object({
                         button: z
                             .object({
                                 verify: z.string().optional(),
+                                answer: z.string().optional(),
+                            })
+                            .optional(),
+                        modal: z
+                            .object({
+                                title: z.string().optional(),
+                                label: z.string().optional(),
+                                placeholder: z.string().optional(),
                             })
                             .optional(),
                     })
