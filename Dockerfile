@@ -1,8 +1,9 @@
 ARG BUN_VERSION=1.2.5
 
-FROM golang:1.21.3-bullseye AS go-builder
+FROM golang:1.21.3-alpine AS go-builder
 
-RUN git clone https://github.com/eslym/captcha-cli.git \
+RUN apk add git \
+    && git clone https://github.com/eslym/captcha-cli.git \
     && cd captcha-cli \
     && go build -o /usr/local/bin/captcha
 
