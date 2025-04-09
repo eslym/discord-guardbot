@@ -9,7 +9,7 @@ RUN apk add git \
 
 FROM oven/bun:${BUN_VERSION}-alpine
 
-COPY ./index.js /usr/local/bin/guardbot
+COPY ./dist/index.js /usr/local/bin/guardbot
 COPY --from=go-builder /usr/local/bin/captcha /usr/local/bin/captcha
 
 ENV NODE_ENV=production
