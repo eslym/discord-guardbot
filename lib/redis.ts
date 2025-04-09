@@ -15,9 +15,10 @@ export async function setupRedis(context: Context) {
     url.username = context.get(kConfig)('redis.username', true) ?? '';
     url.password = context.get(kConfig)('redis.password', true) ?? '';
     const redis = new RedisClient(url.href, {
-        connectionTimeout: 1000,
+        connectionTimeout: 5000,
         autoReconnect: true,
         maxRetries: 3,
+        idleTimeout: 0,
     });
     const prefix = context.get(kConfig)('redis.prefix');
     try {

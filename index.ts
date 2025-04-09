@@ -21,6 +21,7 @@ import {
     TextInputBuilder,
     TextInputStyle,
     ModalSubmitInteraction,
+    MessageFlags,
 } from 'discord.js';
 import { setupRedis } from './lib/redis';
 import { kLimiter, setupLimiter } from './lib/limiter';
@@ -104,7 +105,7 @@ async function requestCaptcha(context: Context, interaction: ButtonInteraction) 
                 `guild.${guild.id as any as number}.lang.message.throttle`,
                 'lang.message.throttle',
             ),
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
         });
         return;
     }
@@ -132,7 +133,7 @@ async function requestCaptcha(context: Context, interaction: ButtonInteraction) 
                     .setStyle(ButtonStyle.Primary),
             ),
         ],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
     });
 }
 
