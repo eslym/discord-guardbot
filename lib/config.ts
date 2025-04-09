@@ -61,6 +61,7 @@ const ConfigSchema = z.object({
         .default({}),
     redis: z
         .object({
+            protocol: z.enum(['redis', 'rediss', 'redis+unix', 'redis+tls']).default('redis'),
             host: z.string().default('localhost'),
             port: z.coerce.number().min(1).max(65535).default(6379),
             username: z.string().optional(),

@@ -1,5 +1,5 @@
 import { AttachmentBuilder, type Snowflake } from 'discord.js';
-import type { RedisClientType } from 'redis';
+import type { RedisClient } from 'bun';
 import { createContextKey, type Context } from './context';
 import { ConfigError, kConfig } from './config';
 import { kRedis } from './redis';
@@ -76,17 +76,12 @@ export class MemoryCaptchaManager implements CaptchaManager {
 }
 
 export class RedisCaptchaManager implements CaptchaManager {
-    #redis: RedisClientType<any, any, any>;
+    #redis: RedisClient;
     #expires: number;
     #captchaBin: string;
     #redisPrefix;
 
-    constructor(
-        redis: RedisClientType<any, any, any>,
-        redisPrefix: string,
-        expires: number,
-        captchaBin: string,
-    ) {
+    constructor(redis: RedisClient, redisPrefix: string, expires: number, captchaBin: string) {
         this.#redis = redis;
         this.#expires = Math.ceil(expires / 1000);
         this.#captchaBin = captchaBin;
@@ -96,7 +91,7 @@ export class RedisCaptchaManager implements CaptchaManager {
     async get(guild: Snowflake, member: Snowflake): Promise<AttachmentBuilder> {
         const key = `${this.#redisPrefix}captcha:${guild}:${member}`;
         const pin = createPin();
-        await this.#redis.setEx(key, this.#expires, pin);
+        await this.#redis.set(key, pin, 'EX', this.#expires);
         return new AttachmentBuilder(await generateCaptcha(pin, this.#captchaBin), {
             name: 'captcha.png',
         });

@@ -1,27 +1,23 @@
-import { createClient, type RedisClientType } from 'redis';
+import { RedisClient } from 'bun';
 import { Context, createContextKey } from './context';
 import { kConfig } from './config';
-import { handleError } from './error';
 
 export interface RedisContext {
-    client: RedisClientType<any, any, any>;
+    client: RedisClient;
     prefix: string;
 }
 
 export async function setupRedis(context: Context) {
     if (!context.get(kConfig)('redis', true)) return;
-    const url = new URL('redis://');
+    const url = new URL(context.get(kConfig)('redis.protocol') + '://');
     url.hostname = context.get(kConfig)('redis.host');
     url.port = context.get(kConfig)('redis.port').toString();
-    const redis = createClient({
-        url: url.toString(),
-        password: context.get(kConfig)('redis.password', true),
-        database: context.get(kConfig)('redis.db', true),
-    });
+    url.username = context.get(kConfig)('redis.username', true) ?? '';
+    url.password = context.get(kConfig)('redis.password', true) ?? '';
+    const redis = new RedisClient(url.href);
     const prefix = context.get(kConfig)('redis.prefix');
     await redis.connect();
     context.set(kRedis, { client: redis, prefix });
-    redis.on('error', handleError);
 }
 
 export const kRedis = createContextKey<RedisContext>('redis');

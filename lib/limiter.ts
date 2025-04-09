@@ -1,10 +1,10 @@
 import type { Snowflake } from 'discord.js';
 import { EventEmitter } from 'events';
 import type TypedEventEmitter from 'typed-emitter';
-import type { RedisClientType } from 'redis';
 import { Context, createContextKey } from './context';
 import { ConfigError, kConfig } from './config';
 import { kRedis } from './redis';
+import type { RedisClient } from 'bun';
 
 interface AttemptsCache {
     attempts: number;
@@ -33,7 +33,7 @@ export interface Limiter extends TypedEventEmitter<LimiterEvents> {
 }
 
 export class MemoryLimiter
-    extends (EventEmitter as new () => TypedEventEmitter<LimiterEvents>)
+    extends (EventEmitter as any as new () => TypedEventEmitter<LimiterEvents>)
     implements Limiter
 {
     #ban = new Map<string, Date>();
@@ -88,13 +88,13 @@ export class MemoryLimiter
 }
 
 export class RedisLimiter
-    extends (EventEmitter as new () => TypedEventEmitter<LimiterEvents>)
+    extends (EventEmitter as any as new () => TypedEventEmitter<LimiterEvents>)
     implements Limiter
 {
-    #redis: RedisClientType<any, any, any>;
+    #redis: RedisClient;
     #prefix: string;
 
-    constructor(redis: RedisClientType<any, any, any>, options: { prefix: string }) {
+    constructor(redis: RedisClient, options: { prefix: string }) {
         super();
         this.#redis = redis;
         this.#prefix = options.prefix;
@@ -114,7 +114,7 @@ export class RedisLimiter
         const attempts = await this.#redis.incr(key);
         if (attempts === 1) await this.#redis.expire(key, Math.ceil(exp / 1000));
         if (attempts >= max) {
-            await this.#redis.setEx(banKey, ban, 'ban');
+            await this.#redis.set(banKey, 'ban', 'PX', ban);
             this.emit('ban', guild, member);
             return false;
         }
