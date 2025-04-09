@@ -1,4 +1,4 @@
-ARG BUN_VERSION=1.2.5
+ARG BUN_VERSION=1.2.8
 
 FROM golang:1.21.3-alpine AS go-builder
 
