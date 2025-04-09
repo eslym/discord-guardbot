@@ -14,9 +14,18 @@ export async function setupRedis(context: Context) {
     url.port = context.get(kConfig)('redis.port').toString();
     url.username = context.get(kConfig)('redis.username', true) ?? '';
     url.password = context.get(kConfig)('redis.password', true) ?? '';
-    const redis = new RedisClient(url.href);
+    const redis = new RedisClient(url.href, {
+        connectionTimeout: 1000,
+        autoReconnect: true,
+        maxRetries: 3,
+    });
     const prefix = context.get(kConfig)('redis.prefix');
-    await redis.connect();
+    try {
+        await redis.connect();
+    } catch (error) {
+        console.error(error);
+        process.exit(1);
+    }
     context.set(kRedis, { client: redis, prefix });
 }
 
